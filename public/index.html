@@ -24,16 +24,13 @@
                 <p class="text-lg font-bold text-gray-400" id="motionDisp">--</p>
             </div>
         </div>
-
         <hr class="mb-4 border-gray-200">
 
         <div class="bg-gray-50 p-4 rounded-xl mb-4 border border-gray-200">
-            <label class="text-sm font-bold text-gray-600 block mb-2">ตั้งอุณหภูมิทำงาน (Auto)</label>
+            <label class="text-sm font-bold text-gray-600 block mb-2">ตั้งอุณหภูมิ (Auto)</label>
             <div class="flex gap-2">
                 <input type="number" id="inputTarget" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="เช่น 28.0">
-                <button onclick="saveTemp()" class="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 shadow">
-                    บันทึก
-                </button>
+                <button onclick="saveTemp()" class="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 shadow">บันทึก</button>
             </div>
             <p class="text-xs text-gray-400 mt-1">ทำงานเมื่อร้อนกว่า: <span id="targetDisp" class="font-bold text-gray-600">--</span> °C</p>
         </div>
@@ -44,8 +41,13 @@
                 <button id="btnAuto" onclick="toggleMode()" class="px-4 py-1.5 rounded-md text-sm font-bold transition bg-gray-300 text-gray-600">LOADING...</button>
             </div>
 
-            <div id="manualControls" class="opacity-50 pointer-events-none transition duration-300">
-                <button id="btnFan" onclick="toggleFan()" class="w-full py-3 rounded-xl font-bold text-white text-lg shadow-md transition bg-gray-400">พัดลม</button>
+            <div id="manualControls" class="opacity-50 pointer-events-none transition duration-300 grid grid-cols-2 gap-3">
+                <button id="btnFan" onclick="toggleFan()" class="w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-gray-400">
+                    <i class="fas fa-fan"></i> พัดลม
+                </button>
+                <button id="btnSwing" onclick="toggleSwing()" class="w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-gray-400">
+                    <i class="fas fa-arrows-alt-h"></i> ส่าย
+                </button>
             </div>
         </div>
         
@@ -54,7 +56,8 @@
 
     <script>
         const API_URL = '/api/device';
-        let state = { manual_mode: false, fan_command: false, target_temp: 28.0 };
+        // เพิ่ม state: swing_command
+        let state = { manual_mode: false, fan_command: false, target_temp: 28.0, swing_command: false };
 
         async function fetchData() {
             try {
@@ -70,7 +73,6 @@
             document.getElementById('tempDisp').innerText = data.current_temp ? data.current_temp.toFixed(1) : "--";
             document.getElementById('targetDisp').innerText = data.target_temp ? data.target_temp.toFixed(1) : "--";
             
-            // Motion
             const motionEl = document.getElementById('motionDisp');
             if(data.motion_detected) {
                 motionEl.innerText = "เจอคน!";
@@ -80,10 +82,10 @@
                 motionEl.className = "text-lg font-bold text-green-600";
             }
 
-            // Buttons
             const btnAuto = document.getElementById('btnAuto');
             const manualCtrl = document.getElementById('manualControls');
             const btnFan = document.getElementById('btnFan');
+            const btnSwing = document.getElementById('btnSwing'); // ปุ่มใหม่
             
             if (data.manual_mode) {
                 btnAuto.innerText = "MANUAL"; 
@@ -95,41 +97,53 @@
                 manualCtrl.classList.add('opacity-50', 'pointer-events-none');
             }
 
+            // ปุ่มพัดลม
             if (data.fan_command) {
-                btnFan.innerText = "ปิดพัดลม (ON)";
-                btnFan.className = "w-full py-3 rounded-xl font-bold text-white text-lg shadow-md transition bg-green-500 hover:bg-green-600";
+                btnFan.innerHTML = '<i class="fas fa-fan fa-spin"></i> เปิด (ON)';
+                btnFan.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-green-500 hover:bg-green-600";
             } else {
-                btnFan.innerText = "เปิดพัดลม (OFF)";
-                btnFan.className = "w-full py-3 rounded-xl font-bold text-white text-lg shadow-md transition bg-red-500 hover:bg-red-600";
+                btnFan.innerHTML = '<i class="fas fa-fan"></i> ปิด (OFF)';
+                btnFan.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-red-500 hover:bg-red-600";
             }
+
+            // ปุ่มส่าย
+            if (data.swing_command) {
+                btnSwing.innerHTML = '<i class="fas fa-arrows-alt-h"></i> ส่ายอยู่';
+                btnSwing.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-purple-500 hover:bg-purple-600";
+            } else {
+                btnSwing.innerHTML = '<i class="fas fa-arrows-alt-h"></i> หยุดส่าย';
+                btnSwing.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-gray-400 hover:bg-gray-500";
+            }
+            
             document.getElementById('lastUpdate').innerText = "Last: " + new Date().toLocaleTimeString();
         }
 
-        // ฟังก์ชันบันทึกอุณหภูมิใหม่
         async function saveTemp() {
             const val = document.getElementById('inputTarget').value;
             if(!val) return alert("กรุณาใส่อุณหภูมิ");
-            
             await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ from_app: true, set_target_temp: parseFloat(val) })
             });
-            alert("บันทึกเรียบร้อย!");
-            fetchData();
+            alert("บันทึกเรียบร้อย!"); fetchData();
         }
 
-        async function sendCommand(manual, fan) {
-            state.manual_mode = manual; state.fan_command = fan;
+        async function sendCommand(manual, fan, swing) {
+            state.manual_mode = manual; state.fan_command = fan; state.swing_command = swing;
             await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ from_app: true, manual_mode: manual, fan_command: fan })
+                body: JSON.stringify({ from_app: true, manual_mode: manual, fan_command: fan, swing_command: swing })
             });
             fetchData();
         }
-        function toggleMode() { sendCommand(!state.manual_mode, state.fan_command); }
-        function toggleFan() { if(state.manual_mode) sendCommand(true, !state.fan_command); }
+
+        function toggleMode() { sendCommand(!state.manual_mode, state.fan_command, state.swing_command); }
+        function toggleFan() { if(state.manual_mode) sendCommand(true, !state.fan_command, state.swing_command); }
+        // ฟังก์ชันปุ่มส่าย
+        function toggleSwing() { if(state.manual_mode) sendCommand(true, state.fan_command, !state.swing_command); }
+
         setInterval(fetchData, 2000);
         fetchData();
     </script>

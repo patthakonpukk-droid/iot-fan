@@ -5,8 +5,8 @@
 #include <DHT.h>
 
 // ================= PIN CONFIG =================
-#define IN1 D1
-#define IN2 D2
+#define FAN_PIN D1      // รีเลย์พัดลม
+#define SWING_PIN D2    // *** เปลี่ยนเป็น D3 ตามที่ขอ ***
 #define PIR D5
 #define DHTPIN 12 
 #define DHTTYPE DHT11
@@ -30,15 +30,19 @@ const unsigned long syncInterval = 2000;
 float currentTemp = 0.0;
 bool fanOn = false;
 bool manualMode = false;
+float targetTemp = 28.0;
 
-// *** เพิ่มตัวแปรเก็บอุณหภูมิเป้าหมาย (ค่าเริ่มต้น 28.0) ***
-float targetTemp = 28.0; 
+// *** เพิ่มตัวแปรคำสั่งส่าย ***
+bool swingCmd = false; 
 
 // ================= SETUP =================
 void setup() {
   Serial.begin(115200);
-  pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT); pinMode(PIR, INPUT);
-  digitalWrite(IN1, HIGH); digitalWrite(IN2, HIGH); 
+  pinMode(FAN_PIN, OUTPUT); pinMode(SWING_PIN, OUTPUT); pinMode(PIR, INPUT);
+  
+  // ปิด Relay ทั้งคู่ไว้ก่อน (Active LOW -> HIGH คือปิด)
+  digitalWrite(FAN_PIN, HIGH); 
+  digitalWrite(SWING_PIN, HIGH); 
   
   dht.begin();
   WiFi.begin(ssid, password);
@@ -60,35 +64,44 @@ void loop() {
     syncWithCloud(motionDetected);
   }
 
-  // === Logic ควบคุมพัดลม ===
-  if (!manualMode) { // AUTO MODE
+  // === Logic Control ===
+  
+  // 1. Auto Mode Logic (คุมเฉพาะการเปิดปิดพัดลม)
+  if (!manualMode) { 
     if (motionDetected) {
-       // *** ใช้ตัวแปร targetTemp แทนตัวเลข 15.0 ***
        if (currentTemp >= targetTemp || fanOn) {
            lastMotionTime = millis(); 
-           // *** ใช้ตัวแปร targetTemp แทนตัวเลข 15.0 ***
            if (!fanOn && currentTemp >= targetTemp) { 
-             controlFan(true);
+             fanOn = true; // ให้ Fan ทำงาน
            }
        }
     }
     
+    // Auto Off Check
     if (fanOn) {
       long timeLeft = (fanOffDelay - (millis() - lastMotionTime)) / 1000;
       if (timeLeft <= 0) {
-         controlFan(false);
+         fanOn = false; // สั่งดับ
       }
     }
+  }
+
+  // 2. สั่ง Hardware ทำงานจริง (Hardware Actuation)
+  // Logic: ส่ายจะทำงานได้ ก็ต่อเมื่อ "คำสั่งส่าย ON" และ "พัดลมต้องหมุนอยู่"
+  
+  // คุมพัดลม
+  if (fanOn) digitalWrite(FAN_PIN, LOW); // ON
+  else digitalWrite(FAN_PIN, HIGH);      // OFF
+
+  // คุมส่าย (แยกเป็นอิสระ แต่เช็คเงื่อนไขพัดลมด้วย)
+  if (swingCmd && fanOn) {
+    digitalWrite(SWING_PIN, LOW); // ส่ายทำงาน
+  } else {
+    digitalWrite(SWING_PIN, HIGH); // หยุดส่าย
   }
 }
 
 // ================= HELPER FUNCTIONS =================
-
-void controlFan(bool state) {
-  fanOn = state;
-  if (fanOn) { digitalWrite(IN1, LOW); digitalWrite(IN2, LOW); } 
-  else { digitalWrite(IN1, HIGH); digitalWrite(IN2, HIGH); }
-}
 
 void syncWithCloud(bool motion) {
   if (WiFi.status() == WL_CONNECTED) {
@@ -106,28 +119,30 @@ void syncWithCloud(bool motion) {
 
     if (httpResponseCode > 0) {
       String response = http.getString();
-      StaticJsonDocument<300> docResponse; // ขยาย buffer หน่อยเผื่อข้อมูลเยอะขึ้น
+      StaticJsonDocument<400> docResponse;
       DeserializationError error = deserializeJson(docResponse, response);
 
       if (!error) {
         bool cloudManual = docResponse["manual_mode"];
         bool cloudFanCmd = docResponse["fan_command"];
-        
-        // *** รับค่า target_temp จาก Cloud ***
         float cloudTarget = docResponse["target_temp"];
         
-        // ป้องกันค่าเป็น 0 หรือค่าเพี้ยน
-        if (cloudTarget > 0) {
-           targetTemp = cloudTarget;
-        }
+        // *** รับค่าคำสั่งส่าย ***
+        bool cloudSwing = docResponse["swing_command"];
 
-        Serial.println("------------- SYNC ------------");
-        Serial.print("Mode: "); Serial.println(cloudManual ? "MANUAL" : "AUTO");
-        Serial.print("Target Temp: "); Serial.println(targetTemp); // แสดงค่าให้ดู
-        Serial.println("-------------------------------");
+        if (cloudTarget > 0) targetTemp = cloudTarget;
 
         manualMode = cloudManual;
-        if (manualMode) controlFan(cloudFanCmd);
+        swingCmd = cloudSwing; // อัปเดตคำสั่งส่าย
+
+        // ถ้า Manual ให้เชื่อปุ่มพัดลมจาก Cloud ทันที
+        if (manualMode) {
+          fanOn = cloudFanCmd;
+        }
+        
+        Serial.print("Mode: "); Serial.print(manualMode ? "MANUAL" : "AUTO");
+        Serial.print(" | Fan: "); Serial.print(fanOn);
+        Serial.print(" | Swing: "); Serial.println(swingCmd);
       }
     }
     http.end();
