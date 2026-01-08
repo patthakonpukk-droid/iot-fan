@@ -4,126 +4,134 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Fan Controller</title>
-    <script src="https://cdn.tailwindcss.com"></script> <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
 
-    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-        <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">ควบคุมพัดลม IoT</h1>
+    <div class="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm">
+        <h1 class="text-xl font-bold text-center mb-4 text-gray-800">ควบคุมพัดลม IoT</h1>
 
-        <div class="grid grid-cols-2 gap-4 mb-6">
-            <div class="bg-blue-50 p-4 rounded-xl text-center">
-                <i class="fas fa-thermometer-half text-3xl text-blue-500 mb-2"></i>
-                <p class="text-gray-500 text-sm">อุณหภูมิ</p>
-                <p class="text-2xl font-bold text-blue-700"><span id="tempDisp">--</span> °C</p>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="bg-blue-50 p-3 rounded-xl text-center">
+                <i class="fas fa-thermometer-half text-2xl text-blue-500 mb-1"></i>
+                <p class="text-gray-500 text-xs">อุณหภูมิห้อง</p>
+                <p class="text-xl font-bold text-blue-700"><span id="tempDisp">--</span> °C</p>
             </div>
-            <div class="bg-yellow-50 p-4 rounded-xl text-center">
-                <i class="fas fa-running text-3xl text-yellow-500 mb-2"></i>
-                <p class="text-gray-500 text-sm">การเคลื่อนไหว</p>
-                <p class="text-xl font-bold text-yellow-700" id="motionDisp">--</p>
+            <div class="bg-yellow-50 p-3 rounded-xl text-center">
+                <i class="fas fa-running text-2xl text-yellow-500 mb-1"></i>
+                <p class="text-gray-500 text-xs">การเคลื่อนไหว</p>
+                <p class="text-lg font-bold text-gray-400" id="motionDisp">--</p>
             </div>
         </div>
 
-        <hr class="mb-6">
+        <hr class="mb-4 border-gray-200">
+
+        <div class="bg-gray-50 p-4 rounded-xl mb-4 border border-gray-200">
+            <label class="text-sm font-bold text-gray-600 block mb-2">ตั้งอุณหภูมิทำงาน (Auto)</label>
+            <div class="flex gap-2">
+                <input type="number" id="inputTarget" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="เช่น 28.0">
+                <button onclick="saveTemp()" class="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 shadow">
+                    บันทึก
+                </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">ทำงานเมื่อร้อนกว่า: <span id="targetDisp" class="font-bold text-gray-600">--</span> °C</p>
+        </div>
 
         <div class="space-y-4">
-            <div class="flex justify-between items-center">
-                <span class="font-medium text-gray-700">โหมดการทำงาน</span>
-                <button id="btnAuto" onclick="toggleMode()" class="px-4 py-2 rounded-lg font-bold transition bg-gray-200 text-gray-600">
-                    AUTO
-                </button>
+            <div class="flex justify-between items-center bg-white p-2 rounded-lg border">
+                <span class="text-sm font-medium text-gray-700">โหมดการทำงาน</span>
+                <button id="btnAuto" onclick="toggleMode()" class="px-4 py-1.5 rounded-md text-sm font-bold transition bg-gray-300 text-gray-600">LOADING...</button>
             </div>
 
             <div id="manualControls" class="opacity-50 pointer-events-none transition duration-300">
-                <p class="text-sm text-gray-500 mb-2">สั่งงานด้วยมือ (Manual)</p>
-                <button id="btnFan" onclick="toggleFan()" class="w-full py-4 rounded-xl font-bold text-white text-xl shadow-lg transition bg-red-500">
-                    OFF
-                </button>
+                <button id="btnFan" onclick="toggleFan()" class="w-full py-3 rounded-xl font-bold text-white text-lg shadow-md transition bg-gray-400">พัดลม</button>
             </div>
         </div>
         
-        <p class="text-xs text-center text-gray-400 mt-6" id="lastUpdate">Connecting...</p>
+        <p class="text-[10px] text-center text-gray-400 mt-6" id="lastUpdate">Connecting...</p>
     </div>
 
     <script>
-        const API_URL = '/api/device'; // Vercel จะรู้ path นี้เอง
-        let state = { manual_mode: false, fan_command: false };
+        const API_URL = '/api/device';
+        let state = { manual_mode: false, fan_command: false, target_temp: 28.0 };
 
-        // 1. อ่านค่าจาก Server (Loop ทุก 2 วิ)
         async function fetchData() {
             try {
                 const res = await fetch(API_URL);
+                if(!res.ok) throw new Error("API Error");
                 const data = await res.json();
                 state = data;
                 updateUI(data);
             } catch (e) { console.error(e); }
         }
 
-        // 2. อัปเดตหน้าจอ
         function updateUI(data) {
-            document.getElementById('tempDisp').innerText = data.current_temp.toFixed(1);
+            document.getElementById('tempDisp').innerText = data.current_temp ? data.current_temp.toFixed(1) : "--";
+            document.getElementById('targetDisp').innerText = data.target_temp ? data.target_temp.toFixed(1) : "--";
             
             // Motion
             const motionEl = document.getElementById('motionDisp');
-            motionEl.innerText = data.motion_detected ? "ตรวจพบ!" : "ปกติ";
-            motionEl.className = data.motion_detected ? "text-xl font-bold text-red-600" : "text-xl font-bold text-green-600";
+            if(data.motion_detected) {
+                motionEl.innerText = "เจอคน!";
+                motionEl.className = "text-lg font-bold text-red-500 animate-pulse";
+            } else {
+                motionEl.innerText = "เงียบ";
+                motionEl.className = "text-lg font-bold text-green-600";
+            }
 
-            // Mode Button
+            // Buttons
             const btnAuto = document.getElementById('btnAuto');
             const manualCtrl = document.getElementById('manualControls');
+            const btnFan = document.getElementById('btnFan');
             
             if (data.manual_mode) {
-                btnAuto.innerText = "MANUAL";
-                btnAuto.className = "px-4 py-2 rounded-lg font-bold transition bg-blue-600 text-white shadow-md";
+                btnAuto.innerText = "MANUAL"; 
+                btnAuto.className = "px-4 py-1.5 rounded-md text-sm font-bold transition bg-blue-600 text-white shadow";
                 manualCtrl.classList.remove('opacity-50', 'pointer-events-none');
             } else {
-                btnAuto.innerText = "AUTO";
-                btnAuto.className = "px-4 py-2 rounded-lg font-bold transition bg-green-500 text-white shadow-md";
+                btnAuto.innerText = "AUTO"; 
+                btnAuto.className = "px-4 py-1.5 rounded-md text-sm font-bold transition bg-green-500 text-white shadow";
                 manualCtrl.classList.add('opacity-50', 'pointer-events-none');
             }
 
-            // Fan Button
-            const btnFan = document.getElementById('btnFan');
             if (data.fan_command) {
-                btnFan.innerText = "พัดลม: ON";
-                btnFan.className = "w-full py-4 rounded-xl font-bold text-white text-xl shadow-lg transition bg-green-500 hover:bg-green-600";
+                btnFan.innerText = "ปิดพัดลม (ON)";
+                btnFan.className = "w-full py-3 rounded-xl font-bold text-white text-lg shadow-md transition bg-green-500 hover:bg-green-600";
             } else {
-                btnFan.innerText = "พัดลม: OFF";
-                btnFan.className = "w-full py-4 rounded-xl font-bold text-white text-xl shadow-lg transition bg-red-500 hover:bg-red-600";
+                btnFan.innerText = "เปิดพัดลม (OFF)";
+                btnFan.className = "w-full py-3 rounded-xl font-bold text-white text-lg shadow-md transition bg-red-500 hover:bg-red-600";
             }
-            
-            document.getElementById('lastUpdate').innerText = "Last update: " + new Date().toLocaleTimeString();
+            document.getElementById('lastUpdate').innerText = "Last: " + new Date().toLocaleTimeString();
         }
 
-        // 3. ส่งคำสั่งไป Server
-        async function sendCommand(manual, fan) {
-            // อัปเดต UI ทันทีเพื่อความลื่นไหล (Optimistic UI)
-            state.manual_mode = manual;
-            state.fan_command = fan;
-            updateUI({...state, current_temp: parseFloat(document.getElementById('tempDisp').innerText)}); 
-
+        // ฟังก์ชันบันทึกอุณหภูมิใหม่
+        async function saveTemp() {
+            const val = document.getElementById('inputTarget').value;
+            if(!val) return alert("กรุณาใส่อุณหภูมิ");
+            
             await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    from_app: true, 
-                    manual_mode: manual, 
-                    fan_command: fan 
-                })
+                body: JSON.stringify({ from_app: true, set_target_temp: parseFloat(val) })
             });
+            alert("บันทึกเรียบร้อย!");
+            fetchData();
         }
 
-        function toggleMode() {
-            sendCommand(!state.manual_mode, state.fan_command);
+        async function sendCommand(manual, fan) {
+            state.manual_mode = manual; state.fan_command = fan;
+            await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ from_app: true, manual_mode: manual, fan_command: fan })
+            });
+            fetchData();
         }
-
-        function toggleFan() {
-            if (!state.manual_mode) return; // ถ้า Auto อยู่ ห้ามกด
-            sendCommand(true, !state.fan_command);
-        }
-
-        setInterval(fetchData, 2000); // ดึงข้อมูลทุก 2 วินาที
-        fetchData(); // ดึงครั้งแรกทันที
+        function toggleMode() { sendCommand(!state.manual_mode, state.fan_command); }
+        function toggleFan() { if(state.manual_mode) sendCommand(true, !state.fan_command); }
+        setInterval(fetchData, 2000);
+        fetchData();
     </script>
 </body>
 </html>

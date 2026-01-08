@@ -1,53 +1,57 @@
-// api/device.js
 import { createClient } from '@supabase/supabase-js';
 
-// ใส่ค่าจาก Supabase ที่ได้จากขั้นตอนที่ 1
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req, res) {
-  // 1. กรณี ESP8266 ส่งข้อมูลมา (SYNC)
-  if (req.method === 'POST') {
-    const { temp, motion, fan_status, from_app } = req.body;
+  // GET: ดึงข้อมูลไปแสดงหน้าเว็บ
+  if (req.method === 'GET') {
+    const { data, error } = await supabase.from('fan_state').select('*').single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json(data);
+  }
 
-    // ถ้ามาจาก App (คนกดปุ่มสั่งงาน)
+  // POST: รับคำสั่ง
+  if (req.method === 'POST') {
+    const { temp, motion, from_app, manual_mode, fan_command, set_target_temp } = req.body;
+
+    // 1. ถ้ามาจาก App (คนกดปุ่ม หรือ ตั้งค่าอุณหภูมิ)
     if (from_app) {
-      const { manual_mode, fan_command } = req.body;
-      const { error } = await supabase
-        .from('fan_state')
-        .update({ manual_mode, fan_command, updated_at: new Date() })
-        .eq('id', 1);
+      let updateData = { updated_at: new Date() };
+      
+      // ถ้ามีการส่งค่าโหมดมาให้อัปเดต
+      if (manual_mode !== undefined) updateData.manual_mode = manual_mode;
+      if (fan_command !== undefined) updateData.fan_command = fan_command;
+      
+      // *** ถ้ามีการส่งค่าอุณหภูมิเป้าหมายมา ***
+      if (set_target_temp !== undefined) updateData.target_temp = set_target_temp;
+
+      const { error } = await supabase.from('fan_state').update(updateData).eq('id', 1);
       
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ success: true });
     }
 
-    // ถ้ามาจาก ESP8266 (อัปเดตค่า Sensor)
+    // 2. ถ้ามาจาก ESP8266 (ส่งค่า Sensor)
     else {
-      // อัปเดตอุณหภูมิและการเคลื่อนไหวลง Database
+      // บันทึกค่า Sensor
       await supabase
         .from('fan_state')
         .update({ current_temp: temp, motion_detected: motion, updated_at: new Date() })
         .eq('id', 1);
 
-      // อ่านค่าคำสั่งล่าสุดจาก Database เพื่อส่งกลับไปให้ ESP8266
+      // *** อ่านคำสั่ง + อุณหภูมิเป้าหมาย ส่งกลับไปให้ ESP ***
       const { data } = await supabase
         .from('fan_state')
-        .select('manual_mode, fan_command')
+        .select('manual_mode, fan_command, target_temp')
         .single();
 
-      // ส่ง JSON กลับไปตามรูปแบบที่ ESP8266 รอรับ
       return res.status(200).json({
         manual_mode: data.manual_mode,
-        fan_command: data.fan_command
+        fan_command: data.fan_command,
+        target_temp: data.target_temp // ส่งค่านี้เพิ่มไป
       });
     }
-  }
-
-  // 2. กรณี App ขอข้อมูลไปแสดงผล (GET)
-  if (req.method === 'GET') {
-    const { data } = await supabase.from('fan_state').select('*').single();
-    return res.status(200).json(data);
   }
 }
