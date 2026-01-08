@@ -11,17 +11,24 @@
 
     <div class="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm relative">
         
-        <div id="statusBadge" class="absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-bold bg-gray-300 text-gray-600 shadow-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-gray-500"></div>
-            Connecting...
+        <div class="mb-6 bg-gray-100 p-2 rounded-lg flex justify-between items-center">
+            <span class="text-xs font-bold text-gray-500 ml-2">เลือกอุปกรณ์:</span>
+            <select id="deviceSelect" onchange="changeDevice()" class="bg-white border text-gray-800 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 w-32 shadow-sm font-bold">
+                <option value="1">พัดลม 1 (ห้องนอน)</option>
+                <option value="2">พัดลม 2 (ห้องนั่งเล่น)</option>
+            </select>
         </div>
 
-        <h1 class="text-xl font-bold text-center mb-4 text-gray-800 mt-2">ควบคุมพัดลม IoT</h1>
+        <div id="statusBadge" class="absolute top-20 right-6 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-300 text-gray-600 shadow-sm flex items-center gap-1">
+            Waiting...
+        </div>
+
+        <h1 class="text-xl font-bold text-center mb-4 text-gray-800">ควบคุมพัดลม IoT</h1>
 
         <div class="grid grid-cols-2 gap-3 mb-4">
             <div class="bg-blue-50 p-3 rounded-xl text-center">
                 <i class="fas fa-thermometer-half text-2xl text-blue-500 mb-1"></i>
-                <p class="text-gray-500 text-xs">อุณหภูมิห้อง</p>
+                <p class="text-gray-500 text-xs">อุณหภูมิ</p>
                 <p class="text-xl font-bold text-blue-700"><span id="tempDisp">--</span> °C</p>
             </div>
             <div class="bg-yellow-50 p-3 rounded-xl text-center">
@@ -35,7 +42,7 @@
         <div class="bg-gray-50 p-4 rounded-xl mb-4 border border-gray-200">
             <label class="text-sm font-bold text-gray-600 block mb-2">ตั้งอุณหภูมิ (Auto)</label>
             <div class="flex gap-2">
-                <input type="number" id="inputTarget" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="เช่น 28.0">
+                <input type="number" id="inputTarget" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="28.0">
                 <button onclick="saveTemp()" class="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 shadow">บันทึก</button>
             </div>
             <p class="text-xs text-gray-400 mt-1">ทำงานเมื่อร้อนกว่า: <span id="targetDisp" class="font-bold text-gray-600">--</span> °C</p>
@@ -56,52 +63,56 @@
                 </button>
             </div>
         </div>
-        
-        <p class="text-[10px] text-center text-gray-400 mt-6" id="lastUpdate">Checking status...</p>
+        <p class="text-[10px] text-center text-gray-400 mt-6" id="lastUpdate">Checking...</p>
     </div>
 
     <script>
-        const API_URL = '/api/device';
+        const BASE_API_URL = '/api/device';
+        let currentDeviceId = 1; // เริ่มต้นที่เบอร์ 1
         let state = { manual_mode: false, fan_command: false, target_temp: 28.0, swing_command: false };
+
+        // ฟังก์ชันเปลี่ยนอุปกรณ์
+        function changeDevice() {
+            const select = document.getElementById('deviceSelect');
+            currentDeviceId = select.value;
+            document.getElementById('lastUpdate').innerText = "Switching device...";
+            // รีเซ็ตค่าหน้าจอระหว่างรอโหลด
+            document.getElementById('tempDisp').innerText = "--";
+            fetchData(); // ดึงข้อมูลใหม่ทันที
+        }
+
+        function getApiUrl() {
+            return `${BASE_API_URL}?id=${currentDeviceId}`;
+        }
 
         async function fetchData() {
             try {
-                const res = await fetch(API_URL);
+                const res = await fetch(getApiUrl());
                 if(!res.ok) throw new Error("API Error");
                 const data = await res.json();
                 state = data;
                 updateUI(data);
-                checkOnlineStatus(data.device_last_seen); // เช็คสถานะออนไลน์
+                checkOnlineStatus(data.device_last_seen);
             } catch (e) { 
-                console.error(e); 
-                document.getElementById('statusBadge').innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div> Net Error';
+                console.error(e);
+                document.getElementById('statusBadge').innerHTML = '<span class="text-red-500">Error</span>';
             }
         }
 
-        // ฟังก์ชันเช็คว่า Online หรือไม่
         function checkOnlineStatus(lastSeenStr) {
             const badge = document.getElementById('statusBadge');
-            
             if (!lastSeenStr) {
-                badge.className = "absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-500 flex items-center gap-2";
-                badge.innerHTML = '<div class="w-2 h-2 rounded-full bg-gray-500"></div> Never Seen';
+                badge.className = "absolute top-20 right-6 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-500 flex items-center gap-1";
+                badge.innerHTML = '<div class="w-1.5 h-1.5 rounded-full bg-gray-500"></div> Never';
                 return;
             }
-
-            const lastSeen = new Date(lastSeenStr).getTime();
-            const now = new Date().getTime();
-            const diffSeconds = (now - lastSeen) / 1000;
-
-            // ถ้าหายไปเกิน 15 วินาที ถือว่า Offline (เพราะ ESP ส่งทุก 2 วิ)
+            const diffSeconds = (new Date().getTime() - new Date(lastSeenStr).getTime()) / 1000;
             if (diffSeconds > 15) {
-                badge.className = "absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600 border border-red-200 flex items-center gap-2 animate-pulse";
-                badge.innerHTML = `<div class="w-2 h-2 rounded-full bg-red-500"></div> OFFLINE (${diffSeconds.toFixed(0)}s)`;
-                
-                // (Option) ถ้าอยากให้ปุ่มจางลงตอน Offline ก็เปิดบรรทัดล่างนี้ครับ
-                // document.body.style.opacity = "0.8"; 
+                badge.className = "absolute top-20 right-6 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600 border border-red-200 flex items-center gap-1 animate-pulse";
+                badge.innerHTML = `<div class="w-1.5 h-1.5 rounded-full bg-red-500"></div> OFF`;
             } else {
-                badge.className = "absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-600 border border-green-200 flex items-center gap-2";
-                badge.innerHTML = '<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> ONLINE';
+                badge.className = "absolute top-20 right-6 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-600 border border-green-200 flex items-center gap-1";
+                badge.innerHTML = '<div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div> ON';
             }
         }
 
@@ -134,28 +145,28 @@
             }
 
             if (data.fan_command) {
-                btnFan.innerHTML = '<i class="fas fa-fan fa-spin"></i> เปิด (ON)';
+                btnFan.innerHTML = '<i class="fas fa-fan fa-spin"></i> เปิด';
                 btnFan.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-green-500 hover:bg-green-600";
             } else {
-                btnFan.innerHTML = '<i class="fas fa-fan"></i> ปิด (OFF)';
+                btnFan.innerHTML = '<i class="fas fa-fan"></i> ปิด';
                 btnFan.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-red-500 hover:bg-red-600";
             }
 
             if (data.swing_command) {
-                btnSwing.innerHTML = '<i class="fas fa-arrows-alt-h"></i> ส่ายอยู่';
+                btnSwing.innerHTML = '<i class="fas fa-arrows-alt-h"></i> ส่าย';
                 btnSwing.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-purple-500 hover:bg-purple-600";
             } else {
-                btnSwing.innerHTML = '<i class="fas fa-arrows-alt-h"></i> หยุดส่าย';
+                btnSwing.innerHTML = '<i class="fas fa-arrows-alt-h"></i> หยุด';
                 btnSwing.className = "w-full py-4 rounded-xl font-bold text-white text-lg shadow-md transition bg-gray-400 hover:bg-gray-500";
             }
             
-            document.getElementById('lastUpdate').innerText = "Last update: " + new Date().toLocaleTimeString();
+            document.getElementById('lastUpdate').innerText = "Last: " + new Date().toLocaleTimeString();
         }
 
         async function saveTemp() {
             const val = document.getElementById('inputTarget').value;
             if(!val) return alert("กรุณาใส่อุณหภูมิ");
-            await fetch(API_URL, {
+            await fetch(getApiUrl(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ from_app: true, set_target_temp: parseFloat(val) })
@@ -165,7 +176,7 @@
 
         async function sendCommand(manual, fan, swing) {
             state.manual_mode = manual; state.fan_command = fan; state.swing_command = swing;
-            await fetch(API_URL, {
+            await fetch(getApiUrl(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ from_app: true, manual_mode: manual, fan_command: fan, swing_command: swing })

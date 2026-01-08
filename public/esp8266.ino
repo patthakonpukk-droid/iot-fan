@@ -14,7 +14,8 @@
 // ================= WIFI & API =================
 const char* ssid = "EN_POR";
 const char* password = "0812622140";
-const char* apiUrl = "https://iot-fan-ppkz.vercel.app/api/device"; 
+// เติม ?id=1 ต่อท้าย
+const char* apiUrl = "https://iot-fan-ppkz.vercel.app/api/device?id=1"; 
 
 // ================= OBJECTS =================
 DHT dht(DHTPIN, DHTTYPE);

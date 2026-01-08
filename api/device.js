@@ -5,9 +5,17 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req, res) {
+  // *** อ่านค่า ID จาก URL (เช่น ?id=2) ถ้าไม่ส่งมาให้ใช้ 1 เป็นค่าเริ่มต้น ***
+  const device_id = req.query.id || 1;
+
   // GET
   if (req.method === 'GET') {
-    const { data, error } = await supabase.from('fan_state').select('*').single();
+    const { data, error } = await supabase
+      .from('fan_state')
+      .select('*')
+      .eq('id', device_id) // *** ใช้ตัวแปร device_id แทนเลข 1 ***
+      .single();
+      
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json(data);
   }
@@ -16,36 +24,36 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { temp, motion, from_app, manual_mode, fan_command, set_target_temp, swing_command } = req.body;
 
-    // 1. จาก App (คนกดปุ่ม) -> อัปเดตแค่สถานะ แต่ไม่อัปเดตเวลา device_last_seen
     if (from_app) {
       let updateData = { updated_at: new Date() };
-      
       if (manual_mode !== undefined) updateData.manual_mode = manual_mode;
       if (fan_command !== undefined) updateData.fan_command = fan_command;
       if (set_target_temp !== undefined) updateData.target_temp = set_target_temp;
       if (swing_command !== undefined) updateData.swing_command = swing_command;
 
-      const { error } = await supabase.from('fan_state').update(updateData).eq('id', 1);
+      const { error } = await supabase
+        .from('fan_state')
+        .update(updateData)
+        .eq('id', device_id); // *** แก้ตรงนี้ ***
       
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ success: true });
-    }
-
-    // 2. จาก ESP8266 (Heartbeat) -> อัปเดต device_last_seen
-    else {
+    } else {
+      // จาก ESP8266
       await supabase
         .from('fan_state')
         .update({ 
             current_temp: temp, 
             motion_detected: motion, 
             updated_at: new Date(),
-            device_last_seen: new Date() // *** บันทึกเวลาที่เจออุปกรณ์ ***
+            device_last_seen: new Date()
         })
-        .eq('id', 1);
+        .eq('id', device_id); // *** แก้ตรงนี้ ***
 
       const { data } = await supabase
         .from('fan_state')
         .select('manual_mode, fan_command, target_temp, swing_command')
+        .eq('id', device_id) // *** แก้ตรงนี้ ***
         .single();
 
       return res.status(200).json({
