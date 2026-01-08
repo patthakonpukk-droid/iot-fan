@@ -16,15 +16,13 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { temp, motion, from_app, manual_mode, fan_command, set_target_temp, swing_command } = req.body;
 
-    // 1. จาก App (คนกดปุ่ม)
+    // 1. จาก App (คนกดปุ่ม) -> อัปเดตแค่สถานะ แต่ไม่อัปเดตเวลา device_last_seen
     if (from_app) {
       let updateData = { updated_at: new Date() };
       
       if (manual_mode !== undefined) updateData.manual_mode = manual_mode;
       if (fan_command !== undefined) updateData.fan_command = fan_command;
       if (set_target_temp !== undefined) updateData.target_temp = set_target_temp;
-      
-      // *** เพิ่มตรงนี้: รับคำสั่งส่าย ***
       if (swing_command !== undefined) updateData.swing_command = swing_command;
 
       const { error } = await supabase.from('fan_state').update(updateData).eq('id', 1);
@@ -33,14 +31,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true });
     }
 
-    // 2. จาก ESP8266 (ส่งค่า Sensor)
+    // 2. จาก ESP8266 (Heartbeat) -> อัปเดต device_last_seen
     else {
       await supabase
         .from('fan_state')
-        .update({ current_temp: temp, motion_detected: motion, updated_at: new Date() })
+        .update({ 
+            current_temp: temp, 
+            motion_detected: motion, 
+            updated_at: new Date(),
+            device_last_seen: new Date() // *** บันทึกเวลาที่เจออุปกรณ์ ***
+        })
         .eq('id', 1);
 
-      // *** อ่านคำสั่งส่ายส่งกลับไปให้บอร์ด ***
       const { data } = await supabase
         .from('fan_state')
         .select('manual_mode, fan_command, target_temp, swing_command')
@@ -50,7 +52,7 @@ export default async function handler(req, res) {
         manual_mode: data.manual_mode,
         fan_command: data.fan_command,
         target_temp: data.target_temp,
-        swing_command: data.swing_command // ส่งเพิ่มไป
+        swing_command: data.swing_command
       });
     }
   }
