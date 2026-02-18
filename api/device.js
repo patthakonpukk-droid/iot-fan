@@ -17,9 +17,11 @@ function verifyAppToken(req) {
   }
 }
 
-// ตรวจสอบ Device Secret จาก ESP8266
-function isDeviceRequest(req) {
-  return req.headers['x-device-secret'] === process.env.DEVICE_SECRET;
+// ตรวจสอบ Device Secret จาก ESP8266 (แยกต่อ device_id)
+function isDeviceRequest(req, device_id) {
+  const secret = process.env[`DEVICE_SECRET_${device_id}`];
+  if (!secret) return false;
+  return req.headers['x-device-secret'] === secret;
 }
 
 export default async function handler(req, res) {
@@ -58,8 +60,8 @@ export default async function handler(req, res) {
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ success: true });
     } else {
-      // จาก ESP8266 - ต้องมี DEVICE_SECRET header
-      if (!isDeviceRequest(req)) return res.status(401).json({ error: 'Unauthorized' });
+      // จาก ESP8266 - ต้องมี DEVICE_SECRET header ที่ตรงกับ device_id
+      if (!isDeviceRequest(req, device_id)) return res.status(401).json({ error: 'Unauthorized' });
       await supabase
         .from('fan_state')
         .update({ 
