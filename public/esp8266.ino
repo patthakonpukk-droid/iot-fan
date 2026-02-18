@@ -17,7 +17,7 @@ const char* password = "";
 // เติม ?id=1 ต่อท้าย
 const char* apiUrl = "https://iot-fan-enlic.vercel.app/api/device?id=1";
 // *** ต้องตรงกับค่า DEVICE_SECRET ใน Environment Variables บน Vercel ***
-const char* deviceSecret = "LL9NtHPH3T3RapSBSlh_4hsq";
+const char* deviceSecret = "npltvnfzzaO-yO0V86Dn2Bwb";
 
 // ================= OBJECTS =================
 DHT dht(DHTPIN, DHTTYPE);
