@@ -15,7 +15,9 @@
 const char* ssid = ".@LICEC-Student-WiFi";
 const char* password = "";
 // เติม ?id=1 ต่อท้าย
-const char* apiUrl = "https://iot-fan-enlic.vercel.app/api/device?id=1"; 
+const char* apiUrl = "https://iot-fan-enlic.vercel.app/api/device?id=1";
+// *** ต้องตรงกับค่า DEVICE_SECRET ใน Environment Variables บน Vercel ***
+const char* deviceSecret = "LL9NtHPH3T3RapSBSlh_4hsq";
 
 // ================= OBJECTS =================
 DHT dht(DHTPIN, DHTTYPE);
@@ -116,6 +118,7 @@ void syncWithCloud(bool motion) {
 
     http.begin(client, apiUrl);
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-Device-Secret", deviceSecret);
     int httpResponseCode = http.POST(jsonString);
 
     if (httpResponseCode > 0) {

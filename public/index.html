@@ -9,6 +9,28 @@
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
 
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-gray-900 bg-opacity-70 flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-xs">
+            <div class="text-center mb-6">
+                <i class="fas fa-lock text-3xl text-blue-500 mb-3"></i>
+                <h2 class="text-xl font-bold text-gray-800">Smart Fan Controller</h2>
+                <p class="text-sm text-gray-500 mt-1">กรุณาใส่รหัสผ่านเพื่อเข้าใช้งาน</p>
+            </div>
+            <input
+                type="password"
+                id="loginPassword"
+                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-center text-lg mb-3 tracking-widest"
+                placeholder="••••••••"
+                onkeydown="if(event.key==='Enter') login()"
+            >
+            <p id="loginError" class="text-red-500 text-xs text-center mb-3 hidden">รหัสผ่านไม่ถูกต้อง</p>
+            <button onclick="login()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow">
+                เข้าสู่ระบบ
+            </button>
+        </div>
+    </div>
+
     <div class="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm relative">
         
         <div class="mb-6 bg-gray-100 p-2 rounded-lg flex justify-between items-center">
@@ -64,12 +86,62 @@
             </div>
         </div>
         <p class="text-[10px] text-center text-gray-400 mt-6" id="lastUpdate">Checking...</p>
+        <button onclick="logout()" class="block mx-auto mt-2 text-[10px] text-gray-300 hover:text-red-400 transition">
+            <i class="fas fa-sign-out-alt mr-1"></i>ออกจากระบบ
+        </button>
     </div>
 
     <script>
         const BASE_API_URL = '/api/device';
-        let currentDeviceId = 1; // เริ่มต้นที่เบอร์ 1
+        let currentDeviceId = 1;
         let state = { manual_mode: false, fan_command: false, target_temp: 28.0, swing_command: false };
+        let authToken = sessionStorage.getItem('fan_token');
+        let pollInterval = null;
+
+        async function login() {
+            const pw = document.getElementById('loginPassword').value;
+            const errEl = document.getElementById('loginError');
+            errEl.classList.add('hidden');
+            try {
+                const res = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pw })
+                });
+                if (res.ok) {
+                    const { token } = await res.json();
+                    sessionStorage.setItem('fan_token', token);
+                    authToken = token;
+                    document.getElementById('loginModal').classList.add('hidden');
+                    startApp();
+                } else {
+                    errEl.classList.remove('hidden');
+                }
+            } catch {
+                errEl.textContent = 'เกิดข้อผิดพลาด ลองใหม่';
+                errEl.classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            sessionStorage.removeItem('fan_token');
+            authToken = null;
+            if (pollInterval) clearInterval(pollInterval);
+            document.getElementById('loginModal').classList.remove('hidden');
+            document.getElementById('loginPassword').value = '';
+        }
+
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            };
+        }
+
+        function startApp() {
+            fetchData();
+            pollInterval = setInterval(fetchData, 2000);
+        }
 
         // ฟังก์ชันเปลี่ยนอุปกรณ์
         function changeDevice() {
@@ -87,7 +159,8 @@
 
         async function fetchData() {
             try {
-                const res = await fetch(getApiUrl());
+                const res = await fetch(getApiUrl(), { headers: { 'Authorization': `Bearer ${authToken}` } });
+                if (res.status === 401) { logout(); return; }
                 if(!res.ok) throw new Error("API Error");
                 const data = await res.json();
                 state = data;
@@ -166,21 +239,23 @@
         async function saveTemp() {
             const val = document.getElementById('inputTarget').value;
             if(!val) return alert("กรุณาใส่อุณหภูมิ");
-            await fetch(getApiUrl(), {
+            const res = await fetch(getApiUrl(), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify({ from_app: true, set_target_temp: parseFloat(val) })
             });
+            if (res.status === 401) { logout(); return; }
             alert("บันทึกเรียบร้อย!"); fetchData();
         }
 
         async function sendCommand(manual, fan, swing) {
             state.manual_mode = manual; state.fan_command = fan; state.swing_command = swing;
-            await fetch(getApiUrl(), {
+            const res = await fetch(getApiUrl(), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify({ from_app: true, manual_mode: manual, fan_command: fan, swing_command: swing })
             });
+            if (res.status === 401) { logout(); return; }
             fetchData();
         }
 
@@ -188,8 +263,11 @@
         function toggleFan() { if(state.manual_mode) sendCommand(true, !state.fan_command, state.swing_command); }
         function toggleSwing() { if(state.manual_mode) sendCommand(true, state.fan_command, !state.swing_command); }
 
-        setInterval(fetchData, 2000);
-        fetchData();
+        // ตรวจสอบ Token ที่บันทึกไว้ - ถ้ามีให้เข้าใช้งานได้เลย
+        if (authToken) {
+            document.getElementById('loginModal').classList.add('hidden');
+            startApp();
+        }
     </script>
 </body>
 </html>
