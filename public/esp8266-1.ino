@@ -17,11 +17,7 @@ const char* password = "";
 // เติม ?id=1 ต่อท้าย
 const char* apiUrl = "https://iot-fan-enlic.vercel.app/api/device?id=1";
 // *** ต้องตรงกับค่า DEVICE_SECRET ใน Environment Variables บน Vercel ***
-<<<<<<< HEAD:public/esp8266.ino
 const char* deviceSecret = "npltvnfzzaO-yO0V86Dn2Bwb";
-=======
-const char* deviceSecret = "-kDuw1_0c4w3hrjsQSLD2XGv";
->>>>>>> 1d0b4cf (Refactor device request verification to use device_id specific secrets and add new ESP8266 device configurations):public/esp8266-1.ino
 
 // ================= OBJECTS =================
 DHT dht(DHTPIN, DHTTYPE);
